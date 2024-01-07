@@ -74,10 +74,12 @@ class AStarPlanner(Planner):
         obstacle_punishment = 0
         # it is a trick, if we compute euclidean dis between a and every obstacle,
         # this single compute_obstacle_punishment will be O(n) complexity
-        # So we choose to use norm0, so we just need to check a square of size (2*avoid) * (2*avoid)
+        # so we just check a square of size (2*avoid) * (2*avoid)
         # centered at a, which is O(1) complexity
         for i in range(-avoid, avoid + 1):
             for j in range(-avoid, avoid + 1):
+                #if self.compute_dis([0, 0], [i, j]) > avoid:
+                #    continue
                 if self.point_is_occupied(a[0] + i, a[1] + j):
                     b = [a[0] + i, a[1] + j]
                     if self.heuristic == "manhattan":

@@ -16,6 +16,8 @@ from usa.planners.common import AStarPlanner as AStarPlannerBase, Heuristic
 from usa.tasks.clip_sdf import ClipSdfTask
 from usa.tasks.datasets.types import PosedRGBDItem
 
+import math
+
 logger = logging.getLogger(__name__)
 
 
@@ -300,8 +302,8 @@ class AStarPlanner(ClipSdfPlanner):
             reachable_pts = self.a_star_planner.get_reachable_points(start_pt)
             reachable_pts = list(reachable_pts)
             end_pt = self.a_star_planner.to_pt(end_goal)
-            avoid = int((0.3 - self.occ_avoid_radius) // self.resolution)
-            ideal_dis = int(0.4 // self.resolution)
+            avoid = math.ceil((0.3 - self.occ_avoid_radius) / self.resolution)
+            ideal_dis = math.floor(0.4 / self.resolution)
             inds = torch.tensor([
                 self.a_star_planner.compute_s1(end_pt, reachable_pt) 
                 + self.a_star_planner.compute_s2(end_pt, reachable_pt, weight = 8, ideal_dis = ideal_dis)
