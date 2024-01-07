@@ -195,6 +195,8 @@ class AStarPlanner(ClipSdfPlanner):
         ceil_height: float = 0,
         occ_avoid_radius: float = 0.3
     ) -> None:
+        self. occ_avoid_radius = occ_avoid_radius
+        self.resolution = resolution
         super().__init__(
             dataset=dataset,
             model=model,
@@ -298,10 +300,18 @@ class AStarPlanner(ClipSdfPlanner):
             reachable_pts = self.a_star_planner.get_reachable_points(start_pt)
             reachable_pts = list(reachable_pts)
             end_pt = self.a_star_planner.to_pt(end_goal)
+            avoid = int((0.3 - self.occ_avoid_radius) // self.resolution)
+            ideal_dis = int(0.4 // self.resolution)
             inds = torch.tensor([
-                self.a_star_planner.compute_heuristic(end_pt, reachable_pt, weight = 4, avoid = 1) 
-                + 8 * max(4 - self.a_star_planner.compute_heuristic(end_pt, reachable_pt, weight = 0), 0)
-                for reachable_pt in reachable_pts])
+                self.a_star_planner.compute_s1(end_pt, reachable_pt) 
+                + self.a_star_planner.compute_s2(end_pt, reachable_pt, weight = 8, ideal_dis = ideal_dis)
+                + self.a_star_planner.compute_s3(reachable_pt, weight = 8, avoid = avoid)
+                for reachable_pt in reachable_pts
+            ])
+            #inds = torch.tensor([
+            #    self.a_star_planner.compute_heuristic(end_pt, reachable_pt, weight = 4, avoid = 1) 
+            #    + 8 * max(4 - self.a_star_planner.compute_heuristic(end_pt, reachable_pt, weight = 0), 0)
+            #    for reachable_pt in reachable_pts])
             ind = torch.argmin(inds)
             end_pt = reachable_pts[ind]
             x, y = self.a_star_planner.to_xy(end_pt)

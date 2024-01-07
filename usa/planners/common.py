@@ -57,7 +57,7 @@ class AStarPlanner(Planner):
     def to_xy(self, pt: tuple[int, int]) -> tuple[float, float]:
         return self.get_map().to_xy(pt)
 
-    def compute_heuristic(self, a: tuple[int, int], b: tuple[int, int], weight = 12, avoid = 3) -> float:
+    def compute_dis(self, a: tuple[int, int], b: tuple[int, int]):
         if self.heuristic == "manhattan":
             dis = abs(a[0] - b[0]) + abs(a[1] - b[1])
         if self.heuristic == "euclidean":
@@ -68,18 +68,66 @@ class AStarPlanner(Planner):
             dis = (dx + dy) + (1 - 2) * min(dx, dy)
         if self.heuristic == "chebyshev":
             dis = max(abs(a[0] - b[0]), abs(a[1] - b[1]))
-        #if self.model:
-        #    dis += min(self.model(self.device.tensor_to(torch.tensor([a[0], a[1], self.floor_height])))[-1].item(), 30)
-        #    dis += min(self.model(self.device.tensor_to(torch.tensor([b[0], b[1], self.floor_height])))[-1].item(), 30)
-        afford_a, afford_b = 0, 0
+        return dis
+
+    def compute_obstacle_punishment(self, a: tuple[int, int], weight: int, avoid: int) -> float:
+        obstacle_punishment = 0
+        # it is a trick, if we compute euclidean dis between a and every obstacle,
+        # this single compute_obstacle_punishment will be O(n) complexity
+        # So we choose to use norm0, so we just need to check a square of size (2*avoid) * (2*avoid)
+        # centered at a, which is O(1) complexity
         for i in range(-avoid, avoid + 1):
             for j in range(-avoid, avoid + 1):
                 if self.point_is_occupied(a[0] + i, a[1] + j):
-                    afford_a = max((weight / max(abs(i) + abs(j), 1)), afford_a)
-                if self.point_is_occupied(b[0] + i, b[1] + j):
-                    afford_b = max((weight / max(abs(i) + abs(j), 1)), afford_b)
-        return dis + afford_a + afford_b
-        #raise ValueError(f"Unknown heuristic: {self.heuristic}")
+                    b = [a[0] + i, a[1] + j]
+                    if self.heuristic == "manhattan":
+                        obs_dis = abs(a[0] - b[0]) + abs(a[1] - b[1])
+                    if self.heuristic == "euclidean":
+                        obs_dis = ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+                    if self.heuristic == "octile":
+                        dx = abs(a[0] - b[0])
+                        dy = abs(a[1] - b[1])
+                        obs_dis = (dx + dy) + (1 - 2) * min(dx, dy)
+                    if self.heuristic == "chebyshev":
+                        obs_dis = max(abs(a[0] - b[0]), abs(a[1] - b[1])) 
+                    obstacle_punishment = max((weight / max(obs_dis, 1)), obstacle_punishment)
+        return obstacle_punishment
+
+    def compute_s1(self, a: tuple[int, int], obj: tuple[int, int]) -> float:
+        return self.compute_dis(a, obj)
+
+    def compute_s2(self, a: tuple[int, int], obj: tuple[int, int], weight = 8, ideal_dis = 4) -> float:
+        return weight * (4 - min(self.compute_dis(a, obj), 4))
+
+    def compute_s3(self, a: tuple[int, int], weight = 8, avoid = 1) -> float:
+        return self.compute_obstacle_punishment(a, weight, avoid)
+
+    # A* heuristic
+    def compute_heuristic(self, a: tuple[int, int], b: tuple[int, int], weight = 12, avoid = 3) -> float:
+        return self.compute_dis(a, b) + weight * self.compute_obstacle_punishment(a, weight, avoid)\
+            + self.compute_obstacle_punishment(b, weight, avoid)
+        # if self.heuristic == "manhattan":
+        #     dis = abs(a[0] - b[0]) + abs(a[1] - b[1])
+        # if self.heuristic == "euclidean":
+        #     dis = ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+        # if self.heuristic == "octile":
+        #     dx = abs(a[0] - b[0])
+        #     dy = abs(a[1] - b[1])
+        #     dis = (dx + dy) + (1 - 2) * min(dx, dy)
+        # if self.heuristic == "chebyshev":
+        #     dis = max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+        # #if self.model:
+        # #    dis += min(self.model(self.device.tensor_to(torch.tensor([a[0], a[1], self.floor_height])))[-1].item(), 30)
+        # #    dis += min(self.model(self.device.tensor_to(torch.tensor([b[0], b[1], self.floor_height])))[-1].item(), 30)
+        # afford_a, afford_b = 0, 0
+        # for i in range(-avoid, avoid + 1):
+        #     for j in range(-avoid, avoid + 1):
+        #         if self.point_is_occupied(a[0] + i, a[1] + j):
+        #             afford_a = max((weight / max(abs(i) + abs(j), 1)), afford_a)
+        #         if self.point_is_occupied(b[0] + i, b[1] + j):
+        #             afford_b = max((weight / max(abs(i) + abs(j), 1)), afford_b)
+        # return dis + afford_a + afford_b
+        # #raise ValueError(f"Unknown heuristic: {self.heuristic}")
 
     def is_in_line_of_sight(self, start_pt: tuple[int, int], end_pt: tuple[int, int]) -> bool:
         """Checks if there is a line-of-sight between two points.
