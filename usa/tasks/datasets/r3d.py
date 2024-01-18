@@ -103,9 +103,8 @@ def get_arrs(
     conf_fnames = get_filenames(conf_re_expr)
 
     assert img_fnames[0] == "rgbd/0.jpg" and img_fnames[-1] == f"rgbd/{len(img_fnames) - 1}.jpg"
-    assert len(img_fnames) == tsz
-    assert len(depth_fnames) == tsz
-    assert len(conf_fnames) == tsz
+    if len(conf_fnames) != len(img_fnames):
+        conf_fnames = ['' for _ in range(len(img_fnames))]
 
     arr_h, arr_w = (depth_h, depth_w) if use_depth_shape else (rgb_h, rgb_w)
     img_arrs = np.zeros((tsz, arr_h, arr_w, 3), dtype=np.uint8)
@@ -128,11 +127,15 @@ def get_arrs(
         depth_arr[depth_is_nan_arr] = -1.0
         depth_arrs[i] = depth_arr if use_depth_shape else to_img_shape(depth_arr)
 
-        with r3d_file.open(conf_fname, "r") as conf_f:
-            raw_bytes = conf_f.read()
-            decompressed_bytes = liblzfse.decompress(raw_bytes)
-            conf_arr = np.frombuffer(decompressed_bytes, dtype=np.uint8).reshape(depth_h, depth_w).copy()
-        conf_arr[depth_is_nan_arr] = 0
+        if conf_fname == '':
+            conf_arr = np.zeros(depth_arr.shape)
+            conf_arr[depth_arr < 3] = 2
+        else:
+            with r3d_file.open(conf_fname, "r") as conf_f:
+                raw_bytes = conf_f.read()
+                decompressed_bytes = liblzfse.decompress(raw_bytes)
+                conf_arr = np.frombuffer(decompressed_bytes, dtype=np.uint8).reshape(depth_h, depth_w).copy()
+            conf_arr[depth_is_nan_arr] = 0
         conf_arrs[i] = conf_arr if use_depth_shape else to_img_shape(conf_arr)
 
     masks_arrs = conf_arrs != 2
@@ -144,11 +147,23 @@ def read_metadata(r3d_file: ZipFile, use_depth_shape: bool) -> Metadata:
     with r3d_file.open("metadata", "r") as f:
         metadata_dict = json.load(f)
 
+    if "dh" in metadata_dict and "dw" in metadata_dict:
+        depth_shape = (metadata_dict["dh"], metadata_dict["dw"])
+    else:
+        depth_shape = (256, 192)
+        print(f"WARNING: depth parameters not found! using default {depth_shape=}")
+
+    if "frameTimestamps" in metadata_dict:
+        timestamps = np.array(metadata_dict["frameTimestamps"], dtype=np.float64)
+    else:
+        print("WARNING: timestamps not found!")
+        timestamps = np.arange(len(metadata_dict["poses"])) / metadata_dict["fps"]
+
     metadata = Metadata(
         rgb_shape=(metadata_dict["h"], metadata_dict["w"]),
-        depth_shape=(metadata_dict["dh"], metadata_dict["dw"]),
+        depth_shape=depth_shape,
         fps=metadata_dict["fps"],
-        timestamps=np.array(metadata_dict["frameTimestamps"], dtype=np.float64),
+        timestamps=timestamps,
         intrinsics=np.array(metadata_dict["K"], dtype=np.float64).reshape(3, 3).T,
         poses=np.stack([as_pose_matrix(pose) for pose in metadata_dict["poses"]], axis=0),
         start_pose=as_pose_matrix(metadata_dict["initPose"]),
@@ -231,7 +246,7 @@ class R3DDataset(Dataset[PosedRGBDItem]):
         self.poses = affine_matrix @ self.poses
 
     def __len__(self) -> int:
-        return self.metadata.timestamps.shape[0]
+        return len(self.imgs_arr)
 
     def __getitem__(self, index: int) -> PosedRGBDItem:
         img = torch.from_numpy(self.imgs_arr[index]).permute(2, 0, 1)
