@@ -11,7 +11,7 @@ task:
   #name: ms_clip_sdf
   dataset: r3d
   # dataset_path: "../Sofa.r3d"
-  dataset_path: chris1.r3d
+  dataset_path: "../chris2.r3d"
   points_to_sample: 50
   clip_model: "ViT_B_32"
   #scales: [30, 70, 110, 150, 190]
